@@ -1,12 +1,14 @@
 
 /*
- * This file is part of the micropython-ulab project,
+ * This file is part of the micropython ulab project,
  *
  * https://github.com/v923z/micropython-ulab
  *
  * The MIT License (MIT)
  *
  * Copyright (c) 2019-2022 Zoltán Vörös
+ * 
+ * Edited 2026 Rajarshi Das
 */
 
 #ifndef __ULAB__
@@ -222,7 +224,7 @@
 #ifndef NDARRAY_HAS_UNARY_OP_LEN
 #define NDARRAY_HAS_UNARY_OP_LEN            (1)
 #endif
-
+  
 #ifndef NDARRAY_HAS_UNARY_OP_NEGATIVE
 #define NDARRAY_HAS_UNARY_OP_NEGATIVE       (1)
 #endif
@@ -777,6 +779,13 @@
 #ifndef ULAB_SCIPY_SIGNAL_HAS_SOSFILT
 #define ULAB_SCIPY_SIGNAL_HAS_SOSFILT       (1)
 #endif
+
+//Custom || STFT Implementation
+//========
+#ifndef ULAB_SCIPY_SIGNAL_HAS_STFT
+#define ULAB_SCIPY_SIGNAL_HAS_STFT          (1)
+#endif
+//========
 
 #ifndef ULAB_SCIPY_HAS_OPTIMIZE_MODULE
 #define ULAB_SCIPY_HAS_OPTIMIZE_MODULE      (1)
