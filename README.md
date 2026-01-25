@@ -45,9 +45,9 @@ cd micropython/ports/rp2
 make BOARD=RPI_PICO2_W USER_C_MODULES=../../../ulab/code/micropython.cmake
 ```
 
-**IMPORTANT:** Only redo step 4 whenever source code is modified to rebuild firmware for the same board.
-
 5. The firmware will be in `micropython/ports/rp2/build-RPI_PICO2_W/firmware.uf2`
+
+**IMPORTANT:** Only redo step 4 whenever source code is modified to rebuild firmware for the same board.
 
 ### Building for Other Boards
 
