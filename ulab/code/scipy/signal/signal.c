@@ -53,7 +53,10 @@ mp_obj_t signal_stft(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args)
         { MP_QSTR_x, MP_ARG_REQUIRED | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
         { MP_QSTR_nperseg, MP_ARG_KW_ONLY | MP_ARG_INT, {.u_int = 256 } },
         { MP_QSTR_noverlap, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
-        { MP_QSTR_sample_rate, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },  // NEW!
+        { MP_QSTR_sample_rate, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
+        { MP_QSTR_out_freqs, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
+        { MP_QSTR_out_times, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
+        { MP_QSTR_out_zxx, MP_ARG_KW_ONLY | MP_ARG_OBJ, {.u_rom_obj = MP_ROM_NONE } },
     };
 
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
@@ -74,8 +77,8 @@ mp_obj_t signal_stft(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args)
         noverlap = (size_t)mp_obj_get_int(args[2].u_obj);
     }
     
-    // Get sample_rate parameter (NEW!)
-    mp_float_t fs = 1.0;  // Default
+    // Get sample_rate parameter
+    mp_float_t fs = 1.0;
     if(args[3].u_obj != mp_const_none) {
         fs = mp_obj_get_float(args[3].u_obj);
     }
@@ -125,10 +128,38 @@ mp_obj_t signal_stft(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args)
     }
     mp_float_t scale = 1.0 / win_sum;
     
-    // Allocate output STFT array (frequencies x time)
-    size_t *shape = ndarray_shape_vector(0, 0, n_freqs, n_frames);
-    ndarray_obj_t *stft_result = ndarray_new_dense_ndarray(2, shape, NDARRAY_COMPLEX);
-    mp_float_t *stft_data = (mp_float_t *)stft_result->array;
+    // Check if output array for Zxx is provided or allocate new
+    ndarray_obj_t *stft_result;
+    mp_float_t *stft_data;
+    
+    if(args[6].u_obj != mp_const_none) {
+        // User provided output array - validate and use it
+        if(!mp_obj_is_type(args[6].u_obj, &ulab_ndarray_type)) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_zxx must be an ndarray"));
+        }
+        stft_result = MP_OBJ_TO_PTR(args[6].u_obj);
+        
+        // Validate shape
+        if(stft_result->ndim != 2) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_zxx must be 2D array"));
+        }
+        
+        if(stft_result->shape[ULAB_MAX_DIMS - 2] != n_freqs || 
+           stft_result->shape[ULAB_MAX_DIMS - 1] != n_frames) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_zxx array has wrong shape"));
+        }
+        
+        if(stft_result->dtype != NDARRAY_COMPLEX) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_zxx must be complex dtype"));
+        }
+        
+        stft_data = (mp_float_t *)stft_result->array;
+    } else {
+        // Allocate new array (original behavior)
+        size_t *shape = ndarray_shape_vector(0, 0, n_freqs, n_frames);
+        stft_result = ndarray_new_dense_ndarray(2, shape, NDARRAY_COMPLEX);
+        stft_data = (mp_float_t *)stft_result->array;
+    }
     
     // Allocate FFT buffer once (complex format: interleaved real/imag)
     mp_float_t *fft_buffer = m_new(mp_float_t, nperseg * 2);
@@ -158,23 +189,81 @@ mp_obj_t signal_stft(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args)
         }
     }
     
-    // Clean up
+    // Clean up temporary buffers
     m_del(mp_float_t, fft_buffer, nperseg * 2);
     m_del(mp_float_t, x_extended, extended_len);
     m_del(mp_float_t, window, nperseg);
     
-    // Create frequency array (NOW USING fs!)
-    ndarray_obj_t *freqs = ndarray_new_linear_array(n_freqs, NDARRAY_FLOAT);
-    mp_float_t *freq_data = (mp_float_t *)freqs->array;
-    for(size_t i = 0; i < n_freqs; i++) {
-        freq_data[i] = i * fs / nperseg;  // Uses fs now!
+    // Handle frequency array (out_freqs parameter)
+    ndarray_obj_t *freqs;
+    mp_float_t *freq_data;
+    
+    if(args[4].u_obj != mp_const_none) {
+        // User provided output array for frequencies
+        if(!mp_obj_is_type(args[4].u_obj, &ulab_ndarray_type)) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_freqs must be an ndarray"));
+        }
+        freqs = MP_OBJ_TO_PTR(args[4].u_obj);
+        
+        // Validate shape
+        if(freqs->ndim != 1) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_freqs must be 1D array"));
+        }
+        
+        if(freqs->len != n_freqs) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_freqs has wrong length"));
+        }
+        
+        if(freqs->dtype != NDARRAY_FLOAT) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_freqs must be float dtype"));
+        }
+        
+        freq_data = (mp_float_t *)freqs->array;
+    } else {
+        // Allocate new array
+        freqs = ndarray_new_linear_array(n_freqs, NDARRAY_FLOAT);
+        freq_data = (mp_float_t *)freqs->array;
     }
     
-    // Create time array (NOW USING fs!)
-    ndarray_obj_t *times = ndarray_new_linear_array(n_frames, NDARRAY_FLOAT);
-    mp_float_t *time_data = (mp_float_t *)times->array;
+    // Fill frequency array
+    for(size_t i = 0; i < n_freqs; i++) {
+        freq_data[i] = i * fs / nperseg;
+    }
+    
+    // Handle time array (out_times parameter)
+    ndarray_obj_t *times;
+    mp_float_t *time_data;
+    
+    if(args[5].u_obj != mp_const_none) {
+        // User provided output array for times
+        if(!mp_obj_is_type(args[5].u_obj, &ulab_ndarray_type)) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_times must be an ndarray"));
+        }
+        times = MP_OBJ_TO_PTR(args[5].u_obj);
+        
+        // Validate shape
+        if(times->ndim != 1) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_times must be 1D array"));
+        }
+        
+        if(times->len != n_frames) {
+            mp_raise_ValueError(MP_ERROR_TEXT("out_times has wrong length"));
+        }
+        
+        if(times->dtype != NDARRAY_FLOAT) {
+            mp_raise_TypeError(MP_ERROR_TEXT("out_times must be float dtype"));
+        }
+        
+        time_data = (mp_float_t *)times->array;
+    } else {
+        // Allocate new array
+        times = ndarray_new_linear_array(n_frames, NDARRAY_FLOAT);
+        time_data = (mp_float_t *)times->array;
+    }
+    
+    // Fill time array
     for(size_t i = 0; i < n_frames; i++) {
-        time_data[i] = ((mp_float_t)(i * hop) - (mp_float_t)pad_len) / fs;  // Uses fs now!
+        time_data[i] = ((mp_float_t)(i * hop) - (mp_float_t)pad_len) / fs;
     }
     
     // Return tuple (freqs, times, Zxx)
